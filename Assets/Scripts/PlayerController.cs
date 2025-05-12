@@ -10,7 +10,7 @@ public class PlayerController : MonoBehaviour
 {
     // Components
     private CharacterController _controller;
-    private InputAction _moveAction, _lookAction, _jumpAction, _crouchAction, _sprintAction, _aimAction, _danceAction, _shootAction;
+    private InputAction _moveAction, _lookAction, _jumpAction, _crouchAction, _sprintAction, _aimAction, _danceAction, _shootAction, _attackAction;
     private Animator _animator;
     private Transform _currentCameraHolder;
     
@@ -79,9 +79,10 @@ public class PlayerController : MonoBehaviour
         _jumpAction = playerInput.actions["Jump"];
         _sprintAction = playerInput.actions["Sprint"];
         _aimAction = playerInput.actions["Aim"];
-        _currentCameraHolder = _thirdPersonCameraHolder;
+        _attackAction = playerInput.actions["Attack"];
         _danceAction = playerInput.actions["Dance"];
         _shootAction = playerInput.actions["Shoot"];
+        _currentCameraHolder = _thirdPersonCameraHolder;
     }
 
     private void Update()
@@ -241,13 +242,10 @@ public class PlayerController : MonoBehaviour
         // Destrueix el projectil després de 3 segons (ajusta segons necessitis)
         Destroy(projectile, 3f);
     }
-    // Afegir mètodes per Crouch, Dance, Shoot...
     private void UpdateAnimator()
     {
-        // Actualitza l'estat de "a terra" (per al landing)
         _animator.SetBool("IsGrounded", _isGrounded);
 
-        // Si volem controlar la velocitat per a transicions walk/run (opcional)
         Vector2 moveInput = _moveAction.ReadValue<Vector2>();
         float speed = moveInput.magnitude * (_isSprinting ? _sprintSpeed : _walkSpeed);
         _animator.SetFloat("Speed", speed);
@@ -266,8 +264,6 @@ public class PlayerController : MonoBehaviour
 
         // Cambia el padre de la cámara al nuevo holder
         _cameraTransform.SetParent(targetHolder);
-
-        // Posición y rotación DESEADAS en el nuevo padre (normalmente Vector3.zero y Quaternion.identity)
         Vector3 targetLocalPosition = Vector3.zero;
         Quaternion targetLocalRotation = Quaternion.identity;
 
@@ -295,14 +291,9 @@ public class PlayerController : MonoBehaviour
         {
             Die();
         }
-        else
-        {
-            _animator.SetTrigger("Hurt"); // Animació de dolor (opcional)
-        }
     }
     private void Die()
     {
-        _isDead = true;
         _animator.SetTrigger("Die");
 
         // Desactiva el control del jugador

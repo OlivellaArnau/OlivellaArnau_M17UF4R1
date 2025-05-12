@@ -53,6 +53,7 @@ public class Enemy : MonoBehaviour
 
     private void Update()
     {
+        Debug.Log($"Current State: {_currentState}");
         if (_isDead) return;
 
         switch (_currentState)
@@ -194,7 +195,7 @@ public class Enemy : MonoBehaviour
     public void TakeDamage(int damage)
     {
         _currentHealth -= damage;
-        _animator.SetTrigger("Hurt");
+        Debug.Log($"Enemy took damage: {damage}, Current Health: {_currentHealth}");
 
         if (_currentHealth <= 0)
             Die();
@@ -251,8 +252,6 @@ public class Enemy : MonoBehaviour
         else
             ChangeState(EnemyState.Patrol);
     }
-
-    // Añade este nuevo método para detectar colisiones
     private void OnTriggerEnter(Collider other)
     {
         if (_isAttacking && !_hasDealtDamage && other.CompareTag("Player"))
