@@ -87,6 +87,7 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        Debug.Log("Current Health: " + _currentHealth); // Debug: Mostra la vida actual del jugador
         if (!_isDancing) // Només processa inputs si no està ballant
         {
             HandleMovement();
@@ -245,7 +246,7 @@ public class PlayerController : MonoBehaviour
     private void UpdateAnimator()
     {
         _animator.SetBool("IsGrounded", _isGrounded);
-
+        _animator.SetBool("IsDead", _isDead); // Actualitza l'estat de mort
         Vector2 moveInput = _moveAction.ReadValue<Vector2>();
         float speed = moveInput.magnitude * (_isSprinting ? _sprintSpeed : _walkSpeed);
         _animator.SetFloat("Speed", speed);
@@ -283,6 +284,7 @@ public class PlayerController : MonoBehaviour
     }
     public void TakeDamage(int damage)
     {
+        Debug.Log("Player Damage taken: " + damage); // Debug: Mostra el dany rebut
         if (_isDead) return;
 
         _currentHealth -= damage;
@@ -294,8 +296,7 @@ public class PlayerController : MonoBehaviour
     }
     private void Die()
     {
-        _animator.SetTrigger("Die");
-
+        _isDead = true;
         // Desactiva el control del jugador
         GetComponent<CharacterController>().enabled = false;
         GetComponent<PlayerInput>().enabled = false;

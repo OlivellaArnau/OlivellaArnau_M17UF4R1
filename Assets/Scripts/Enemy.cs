@@ -21,7 +21,7 @@ public class Enemy : MonoBehaviour
     [SerializeField] private List<Transform> _patrolPoints = new List<Transform>();
 
     [Header("Attack Settings")]
-    [SerializeField] private float _attackDamage = 10f;
+    [SerializeField] private float _attackDamage = 50f;
     [SerializeField] private float _attackCooldown = 2f;
     [SerializeField] private BoxCollider _attackHitbox;
     [SerializeField] private float _attackActivationDelay = 0.3f;
@@ -53,8 +53,20 @@ public class Enemy : MonoBehaviour
 
     private void Update()
     {
-        Debug.Log($"Current State: {_currentState}");
         if (_isDead) return;
+
+        // Prioridad de estados
+        if (DetectPlayer() && _currentState != EnemyState.Attack)
+        {
+            if (_currentHealth >= _maxHealth / 2)
+                ChangeState(EnemyState.Chase);
+            else
+                ChangeState(EnemyState.Flee);
+        }
+        else if (!DetectPlayer() && _currentState == EnemyState.Chase)
+        {
+            ChangeState(_patrolPoints.Count > 0 ? EnemyState.Patrol : EnemyState.Wander);
+        }
 
         switch (_currentState)
         {
@@ -71,55 +83,43 @@ public class Enemy : MonoBehaviour
                 WanderBehavior();
                 break;
             case EnemyState.Attack:
-                // Rotación especial durante el ataque
-                RotateTowards(_player.position);
+                AttackBehavior();
                 break;
         }
 
-        // Rotación general para todos los estados excepto Attack
-        if (_currentState != EnemyState.Attack && _agent.velocity.magnitude > 0.1f)
-        {
-            RotateTowardsMovementDirection();
-        }
-
-        AvoidOtherEnemies();
+        HandleRotation();
+        Debug.Log($"Current State: {_currentState}, Health: {_currentHealth}");
     }
+
 
     // --- Comportaments Principals ---
     private void PatrolBehavior()
     {
+        if (_patrolPoints.Count == 0)
+        {
+            ChangeState(EnemyState.Wander);
+            return;
+        }
+
         if (Vector3.Distance(transform.position, _patrolPoints[_currentPatrolIndex].position) < 1f)
         {
             SetNextPatrolPoint();
         }
-
-        if (DetectPlayer())
-        {
-            if (_currentHealth >= _maxHealth / 2)
-                ChangeState(EnemyState.Chase);
-            else
-                ChangeState(EnemyState.Flee);
-        }
+        _agent.SetDestination(_patrolPoints[_currentPatrolIndex].position);
     }
+
     private void ChaseBehavior()
     {
+        if (Vector3.Distance(transform.position, _player.position) <= _attackRange)
+        {
+            ChangeState(EnemyState.Attack);
+            return;
+        }
+
         _agent.SetDestination(_player.position);
         _lastKnownPlayerPosition = _player.position;
-
-        float distanceToPlayer = Vector3.Distance(transform.position, _player.position);
-
-        if (distanceToPlayer <= _attackRange)
-        {
-            AttackPlayer();
-        }
-        else if (!DetectPlayer())
-        {
-            if (_currentHealth >= _maxHealth)
-                ChangeState(EnemyState.Patrol);
-            else
-                ChangeState(EnemyState.Wander);
-        }
     }
+
     private void FleeBehavior()
     {
         Vector3 fleeDirection = (transform.position - _player.position).normalized;
@@ -134,12 +134,23 @@ public class Enemy : MonoBehaviour
 
     private void WanderBehavior()
     {
-        if (Vector3.Distance(transform.position, _agent.destination) < 1f)
+        if (_agent.remainingDistance < 1f)
         {
-            Vector3 randomPoint = Random.insideUnitSphere * _wanderRadius + _lastKnownPlayerPosition;
+            Vector3 randomDirection = Random.insideUnitSphere * _wanderRadius;
+            randomDirection += transform.position;
+
             NavMeshHit hit;
-            NavMesh.SamplePosition(randomPoint, out hit, _wanderRadius, 1);
-            _agent.SetDestination(hit.position);
+            NavMesh.SamplePosition(randomDirection, out hit, _wanderRadius, 1);
+
+            if (_patrolPoints.Count > 0)
+            {
+                // Si tiene puntos de patrulla, volver a patrullar después de un tiempo
+                ChangeState(EnemyState.Patrol);
+            }
+            else
+            {
+                _agent.SetDestination(hit.position);
+            }
         }
     }
 
@@ -189,7 +200,6 @@ public class Enemy : MonoBehaviour
     private void ChangeState(EnemyState newState)
     {
         _currentState = newState;
-        _animator.SetInteger("State", (int)newState);
     }
 
     public void TakeDamage(int damage)
@@ -202,13 +212,20 @@ public class Enemy : MonoBehaviour
         else if (_currentHealth < _maxHealth / 2 && _currentState != EnemyState.Flee)
             ChangeState(EnemyState.Flee);
     }
-    private void AttackPlayer()
+    private void AttackBehavior()
     {
-        if (CanAttack() && !_isAttacking)
+        if (Vector3.Distance(transform.position, _player.position) > _attackRange)
+        {
+            ChangeState(EnemyState.Chase);
+            return;
+        }
+
+        if (!_isAttacking)
         {
             StartCoroutine(PerformAttack());
         }
     }
+
     private bool CanAttack()
     {
         return Time.time >= _lastAttackTime + _attackCooldown;
@@ -218,39 +235,35 @@ public class Enemy : MonoBehaviour
         _isAttacking = true;
         _hasDealtDamage = false;
         _lastAttackTime = Time.time;
-        Debug.Log("Attack initiated");
 
-        ChangeState(EnemyState.Attack);
         _agent.isStopped = true;
+        _animator.SetTrigger("Attack");
 
-        // Mantener la rotación hacia el jugador durante el ataque
-        while (_isAttacking)
+        // Rotación hacia el jugador durante el ataque
+        float attackTimer = 0f;
+        while (attackTimer < _attackActivationDelay)
         {
             RotateTowards(_player.position);
+            attackTimer += Time.deltaTime;
             yield return null;
         }
-        // Espera antes de activar el hitbox
-        yield return new WaitForSeconds(_attackActivationDelay);
 
-        // Activa el hitbox
+        // Activar hitbox
         if (_attackHitbox != null)
             _attackHitbox.enabled = true;
 
-        // Mantén el hitbox activo por un tiempo
         yield return new WaitForSeconds(_hitboxActiveDuration);
 
-        // Desactiva el hitbox
+        // Desactivar hitbox y reanudar movimiento
         if (_attackHitbox != null)
             _attackHitbox.enabled = false;
 
-        _isAttacking = false;
         _agent.isStopped = false;
+        _isAttacking = false;
 
-        // Vuelve al estado de persecución
-        if (DetectPlayer())
-            ChangeState(EnemyState.Chase);
-        else
-            ChangeState(EnemyState.Patrol);
+        // Volver a Chase si el jugador sigue visible
+        ChangeState(DetectPlayer() ? EnemyState.Chase :
+                   _patrolPoints.Count > 0 ? EnemyState.Patrol : EnemyState.Wander);
     }
     private void OnTriggerEnter(Collider other)
     {
@@ -263,6 +276,22 @@ public class Enemy : MonoBehaviour
                 playerController.TakeDamage(Mathf.RoundToInt(_attackDamage));
                 _hasDealtDamage = true;
             }
+        }
+    }
+    private void HandleRotation()
+    {
+        switch (_currentState)
+        {
+            case EnemyState.Chase:
+            case EnemyState.Attack:
+                RotateTowards(_player.position);
+                break;
+
+            case EnemyState.Patrol:
+            case EnemyState.Wander:
+                if (_agent.velocity.magnitude > 0.1f)
+                    RotateTowardsMovementDirection();
+                break;
         }
     }
     private void Die()
